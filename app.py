@@ -134,7 +134,15 @@ def query_section(rag_system: RAGSystem):
         if st.button("🔍 Search", type="primary"):
             if query.strip():
                 with st.spinner("Searching documents and generating response..."):
-                    result = rag_system.query(query, top_k=top_k)
+                    # Use guardrails if configured
+                    if 'guardrails' in st.session_state and st.session_state.guardrails.get('custom_prompt'):
+                        result = rag_system.query_with_guardrails(
+                            query, 
+                            st.session_state.guardrails, 
+                            top_k=top_k
+                        )
+                    else:
+                        result = rag_system.query(query, top_k=top_k)
                     
                     # Store query in history
                     st.session_state.query_history.append({
@@ -259,6 +267,188 @@ def display_query_results(result: Dict[str, Any]):
             st.metric("Avg Relevance", f"{avg_score:.3f}")
 
 
+def guardrails_section(rag_system):
+    """Guardrails configuration section"""
+    st.header("🛡️ Guardrails Configuration")
+    st.markdown("Configure safety and behavior controls for the RAG system.")
+    
+    # Initialize guardrails in session state if not exists
+    if 'guardrails' not in st.session_state:
+        st.session_state.guardrails = {
+            'use_llm_as_source': False,
+            'custom_prompt': '',
+            'domain_restriction': 'GDPR',
+            'max_response_length': 1000,
+            'require_sources': True,
+            'min_relevance_score': 0.3,
+            'safety_checks': True,
+            'response_tone': 'Professional'
+        }
+    
+    # Create two columns for better layout
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.subheader("🔧 Core Settings")
+        
+        # LLM as source option
+        st.session_state.guardrails['use_llm_as_source'] = st.checkbox(
+            "🤖 Use LLM as Knowledge Source",
+            value=st.session_state.guardrails['use_llm_as_source'],
+            help="Allow the LLM to use its training data in addition to uploaded documents"
+        )
+        
+        # Domain restriction
+        st.session_state.guardrails['domain_restriction'] = st.selectbox(
+            "🎯 Domain Restriction",
+            options=['GDPR', 'Data Protection', 'Privacy Law', 'Compliance', 'Legal', 'None'],
+            index=['GDPR', 'Data Protection', 'Privacy Law', 'Compliance', 'Legal', 'None'].index(
+                st.session_state.guardrails['domain_restriction']
+            ),
+            help="Restrict responses to specific domains"
+        )
+        
+        # Response tone
+        st.session_state.guardrails['response_tone'] = st.selectbox(
+            "🎭 Response Tone",
+            options=['Professional', 'Formal', 'Friendly', 'Technical', 'Concise'],
+            index=['Professional', 'Formal', 'Friendly', 'Technical', 'Concise'].index(
+                st.session_state.guardrails['response_tone']
+            ),
+            help="Set the tone for AI responses"
+        )
+        
+        # Custom prompt
+        st.subheader("📝 Custom System Prompt")
+        st.session_state.guardrails['custom_prompt'] = st.text_area(
+            "Guardrail Prompt",
+            value=st.session_state.guardrails['custom_prompt'],
+            placeholder="You are a GDPR compliance expert. Only provide answers related to data protection, privacy rights, and regulatory compliance. If asked about topics outside GDPR, politely decline and redirect to relevant GDPR topics.",
+            height=150,
+            help="Custom prompt to guide the AI's behavior and responses"
+        )
+        
+        # Advanced settings
+        with st.expander("⚙️ Advanced Settings", expanded=False):
+            st.session_state.guardrails['max_response_length'] = st.slider(
+                "📏 Maximum Response Length (tokens)",
+                min_value=100,
+                max_value=2000,
+                value=st.session_state.guardrails['max_response_length'],
+                step=100
+            )
+            
+            st.session_state.guardrails['require_sources'] = st.checkbox(
+                "📚 Require Document Sources",
+                value=st.session_state.guardrails['require_sources'],
+                help="Only provide answers when relevant document sources are found"
+            )
+            
+            st.session_state.guardrails['min_relevance_score'] = st.slider(
+                "🎯 Minimum Relevance Score",
+                min_value=0.0,
+                max_value=1.0,
+                value=st.session_state.guardrails['min_relevance_score'],
+                step=0.1,
+                help="Minimum relevance score for document chunks to be used"
+            )
+            
+            st.session_state.guardrails['safety_checks'] = st.checkbox(
+                "🛡️ Enable Safety Checks",
+                value=st.session_state.guardrails['safety_checks'],
+                help="Enable additional safety and content filtering"
+            )
+    
+    with col2:
+        st.subheader("📋 Quick Templates")
+        
+        # Pre-defined prompt templates
+        template_options = {
+            "GDPR Expert": "You are a GDPR compliance expert. Only provide answers related to data protection, privacy rights, and regulatory compliance. If asked about topics outside GDPR, politely decline and redirect to relevant GDPR topics.",
+            
+            "Strict GDPR": "You are a GDPR compliance specialist. ONLY answer questions directly related to GDPR, data protection, privacy rights, and regulatory compliance. For any other topics, respond with: 'I can only assist with GDPR and data protection matters. Please ask a question related to data protection, privacy rights, or GDPR compliance.'",
+            
+            "Legal Advisor": "You are a legal advisor specializing in data protection law. Provide accurate, professional advice on GDPR compliance, data subject rights, and privacy regulations. Always recommend consulting with qualified legal counsel for specific legal matters.",
+            
+            "Compliance Officer": "You are a data protection compliance officer. Help with GDPR implementation, compliance procedures, and best practices. Focus on practical, actionable guidance for organizations handling personal data.",
+            
+            "Privacy Consultant": "You are a privacy consultant. Provide guidance on GDPR compliance, data protection impact assessments, and privacy by design principles. Emphasize practical implementation strategies."
+        }
+        
+        selected_template = st.selectbox(
+            "Choose a template:",
+            options=list(template_options.keys()),
+            help="Select a pre-defined prompt template"
+        )
+        
+        if st.button("📋 Apply Template"):
+            st.session_state.guardrails['custom_prompt'] = template_options[selected_template]
+            st.success(f"Applied {selected_template} template!")
+            st.rerun()
+        
+        st.subheader("🔍 Current Settings")
+        
+        # Display current settings
+        st.json({
+            "LLM as Source": st.session_state.guardrails['use_llm_as_source'],
+            "Domain": st.session_state.guardrails['domain_restriction'],
+            "Tone": st.session_state.guardrails['response_tone'],
+            "Max Length": st.session_state.guardrails['max_response_length'],
+            "Require Sources": st.session_state.guardrails['require_sources'],
+            "Min Relevance": st.session_state.guardrails['min_relevance_score'],
+            "Safety Checks": st.session_state.guardrails['safety_checks']
+        })
+        
+        # Test guardrails
+        st.subheader("🧪 Test Guardrails")
+        test_query = st.text_input(
+            "Test Query:",
+            placeholder="Ask a test question to see how guardrails work"
+        )
+        
+        if st.button("🚀 Test") and test_query:
+            with st.spinner("Testing guardrails..."):
+                # Apply guardrails to the query
+                result = rag_system.query_with_guardrails(
+                    test_query, 
+                    st.session_state.guardrails
+                )
+                display_query_results(result)
+    
+    # Save/Reset buttons
+    st.divider()
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("💾 Save Configuration", type="primary"):
+            st.success("Guardrails configuration saved!")
+    
+    with col2:
+        if st.button("🔄 Reset to Defaults"):
+            st.session_state.guardrails = {
+                'use_llm_as_source': False,
+                'custom_prompt': '',
+                'domain_restriction': 'GDPR',
+                'max_response_length': 1000,
+                'require_sources': True,
+                'min_relevance_score': 0.3,
+                'safety_checks': True,
+                'response_tone': 'Professional'
+            }
+            st.success("Reset to default settings!")
+            st.rerun()
+    
+    with col3:
+        if st.button("📤 Export Config"):
+            config_json = st.session_state.guardrails
+            st.download_button(
+                label="Download Configuration",
+                data=str(config_json),
+                file_name="guardrails_config.json",
+                mime="application/json"
+            )
+
+
 def query_history_section():
     """Display query history"""
     if st.session_state.query_history:
@@ -330,7 +520,7 @@ def main():
     display_system_status(rag_system)
     
     # Main tabs
-    tab1, tab2, tab3 = st.tabs(["📄 Upload Documents", "🔍 Query Documents", "📜 History"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📄 Upload Documents", "🔍 Query Documents", "🛡️ Guardrails", "📜 History"])
     
     with tab1:
         upload_documents_section(rag_system)
@@ -339,6 +529,9 @@ def main():
         query_section(rag_system)
     
     with tab3:
+        guardrails_section(rag_system)
+    
+    with tab4:
         query_history_section()
 
 
