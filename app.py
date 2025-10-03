@@ -134,11 +134,22 @@ def query_section(rag_system: RAGSystem):
         if st.button("🔍 Search", type="primary"):
             if query.strip():
                 with st.spinner("Searching documents and generating response..."):
-                    # Use guardrails if configured
-                    if 'guardrails' in st.session_state and st.session_state.guardrails.get('custom_prompt'):
+                    # Combine persona guardrails and LLM configuration
+                    combined_config = {}
+                    
+                    # Add persona guardrails if configured
+                    if 'guardrails' in st.session_state:
+                        combined_config.update(st.session_state.guardrails)
+                    
+                    # Add LLM configuration if configured
+                    if 'llm_config' in st.session_state:
+                        combined_config.update(st.session_state.llm_config)
+                    
+                    # Use combined configuration if any guardrails are set
+                    if combined_config and (combined_config.get('persona') != 'None' or combined_config.get('custom_prompt')):
                         result = rag_system.query_with_guardrails(
                             query, 
-                            st.session_state.guardrails, 
+                            combined_config, 
                             top_k=top_k
                         )
                     else:
@@ -146,9 +157,11 @@ def query_section(rag_system: RAGSystem):
                     
                     # Store query in history
                     st.session_state.query_history.append({
-                        "query": query,
+                        "question": query,
                         "result": result,
-                        "timestamp": pd.Timestamp.now()
+                        "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "persona": combined_config.get('persona', 'None'),
+                        "sources_count": len(result.get('sources', []))
                     })
                     
                     # Display results
@@ -301,10 +314,10 @@ def display_query_results(result: Dict[str, Any]):
             st.metric("Avg Relevance", f"{avg_score:.3f}")
 
 
-def guardrails_section(rag_system):
-    """Guardrails configuration section"""
-    st.header("🛡️ Guardrails Configuration")
-    st.markdown("Configure safety and behavior controls for the RAG system.")
+def persona_guardrails_section(rag_system):
+    """Persona guardrails configuration section"""
+    st.header("👤 Persona Guardrails")
+    st.markdown("Configure persona-specific filtering and behavior controls for the RAG system.")
     
     # Initialize guardrails in session state if not exists
     if 'guardrails' not in st.session_state:
@@ -326,37 +339,9 @@ def guardrails_section(rag_system):
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.subheader("🔧 Core Settings")
-        
-        # LLM as source option
-        st.session_state.guardrails['use_llm_as_source'] = st.checkbox(
-            "🤖 Use LLM as Knowledge Source",
-            value=st.session_state.guardrails['use_llm_as_source'],
-            help="Allow the LLM to use its training data in addition to uploaded documents"
-        )
-        
-        # Domain restriction
-        st.session_state.guardrails['domain_restriction'] = st.selectbox(
-            "🎯 Domain Restriction",
-            options=['GDPR', 'Data Protection', 'Privacy Law', 'Compliance', 'Legal', 'None'],
-            index=['GDPR', 'Data Protection', 'Privacy Law', 'Compliance', 'Legal', 'None'].index(
-                st.session_state.guardrails['domain_restriction']
-            ),
-            help="Restrict responses to specific domains"
-        )
-        
-        # Response tone
-        st.session_state.guardrails['response_tone'] = st.selectbox(
-            "🎭 Response Tone",
-            options=['Professional', 'Formal', 'Friendly', 'Technical', 'Concise'],
-            index=['Professional', 'Formal', 'Friendly', 'Technical', 'Concise'].index(
-                st.session_state.guardrails['response_tone']
-            ),
-            help="Set the tone for AI responses"
-        )
+        st.subheader("👤 Persona Settings")
         
         # Persona selection
-        st.subheader("👤 User Persona")
         st.session_state.guardrails['persona'] = st.selectbox(
             "🎯 Target Persona",
             options=['None', 'CISO', 'DPO', 'Accountant', 'Layman', 'Student', 'CEO', 'Financial Product Consumer', 'Legal Counsel', 'IT Manager', 'HR Manager', 'Marketing Manager', 'Small Business Owner', 'Developer', 'Auditor'],
@@ -366,31 +351,31 @@ def guardrails_section(rag_system):
             help="Select the persona/role to tailor responses for"
         )
         
-                # Strict persona adherence
-                st.session_state.guardrails['strict_persona'] = st.checkbox(
-                    "🔒 Strictly Adhere to Persona",
-                    value=st.session_state.guardrails['strict_persona'],
-                    help="Enforce persona-specific language, examples, and context. If disabled, persona is used as guidance only."
-                )
-                
-                # Persona threshold
-                st.session_state.guardrails['persona_threshold'] = st.slider(
-                    "🎯 Persona Relevance Threshold",
-                    min_value=0.0,
-                    max_value=2.0,
-                    value=st.session_state.guardrails.get('persona_threshold', 0.2),
-                    step=0.1,
-                    help="Minimum persona relevance score required to apply persona filtering. If below threshold, uses generic retrieval."
-                )
-                
-                # Show threshold explanation
-                if st.session_state.guardrails['persona'] != 'None':
-                    st.info(f"""
-                    **Persona Threshold Logic:**
-                    - **Above {st.session_state.guardrails['persona_threshold']}**: Apply persona-specific filtering and re-ranking
-                    - **Below {st.session_state.guardrails['persona_threshold']}**: Fall back to generic semantic search
-                    - **Score Calculation**: Content matches (+2), metadata matches (+1), question relevance (+0.5)
-                    """)
+        # Strict persona adherence
+        st.session_state.guardrails['strict_persona'] = st.checkbox(
+            "🔒 Strictly Adhere to Persona",
+            value=st.session_state.guardrails['strict_persona'],
+            help="Enforce persona-specific language, examples, and context. If disabled, persona is used as guidance only."
+        )
+        
+        # Persona threshold
+        st.session_state.guardrails['persona_threshold'] = st.slider(
+            "🎯 Persona Relevance Threshold",
+            min_value=0.0,
+            max_value=2.0,
+            value=st.session_state.guardrails.get('persona_threshold', 0.2),
+            step=0.1,
+            help="Minimum persona relevance score required to apply persona filtering. If below threshold, uses generic retrieval."
+        )
+        
+        # Show threshold explanation
+        if st.session_state.guardrails['persona'] != 'None':
+            st.info(f"""
+            **Persona Threshold Logic:**
+            - **Above {st.session_state.guardrails['persona_threshold']}**: Apply persona-specific filtering and re-ranking
+            - **Below {st.session_state.guardrails['persona_threshold']}**: Fall back to generic semantic search
+            - **Score Calculation**: Content matches (+2), metadata matches (+1), question relevance (+0.5)
+            """)
         
         # Show persona description
         if st.session_state.guardrails['persona'] != 'None':
@@ -552,9 +537,202 @@ def guardrails_section(rag_system):
             st.download_button(
                 label="Download Configuration",
                 data=str(config_json),
-                file_name="guardrails_config.json",
+                file_name="persona_guardrails_config.json",
                 mime="application/json"
             )
+
+
+def llm_configuration_section(rag_system):
+    """LLM configuration section"""
+    st.header("⚙️ LLM Configuration")
+    st.markdown("Configure LLM behavior, prompts, and response settings.")
+    
+    # Initialize LLM config in session state if not exists
+    if 'llm_config' not in st.session_state:
+        st.session_state.llm_config = {
+            'use_llm_as_source': False,
+            'custom_prompt': '',
+            'domain_restriction': 'GDPR',
+            'max_response_length': 1000,
+            'require_sources': True,
+            'min_relevance_score': 0.3,
+            'safety_checks': True,
+            'response_tone': 'Professional'
+        }
+    
+    # Create two columns for better layout
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.subheader("🔧 LLM Settings")
+        
+        # LLM as source option
+        st.session_state.llm_config['use_llm_as_source'] = st.checkbox(
+            "🤖 Use LLM as Knowledge Source",
+            value=st.session_state.llm_config['use_llm_as_source'],
+            help="Allow the LLM to use its training data in addition to uploaded documents"
+        )
+        
+        # Domain restriction
+        st.session_state.llm_config['domain_restriction'] = st.selectbox(
+            "🎯 Domain Restriction",
+            options=['GDPR', 'Data Protection', 'Privacy Law', 'Compliance', 'Legal', 'None'],
+            index=['GDPR', 'Data Protection', 'Privacy Law', 'Compliance', 'Legal', 'None'].index(
+                st.session_state.llm_config['domain_restriction']
+            ),
+            help="Restrict responses to specific domains"
+        )
+        
+        # Response tone
+        st.session_state.llm_config['response_tone'] = st.selectbox(
+            "🎭 Response Tone",
+            options=['Professional', 'Formal', 'Friendly', 'Technical', 'Concise'],
+            index=['Professional', 'Formal', 'Friendly', 'Technical', 'Concise'].index(
+                st.session_state.llm_config['response_tone']
+            ),
+            help="Set the tone for AI responses"
+        )
+        
+        # Custom prompt
+        st.subheader("📝 Custom Prompt")
+        st.session_state.llm_config['custom_prompt'] = st.text_area(
+            "🎯 Custom System Prompt",
+            value=st.session_state.llm_config['custom_prompt'],
+            height=100,
+            help="Override the default system prompt with your own instructions"
+        )
+        
+        # Response length
+        st.session_state.llm_config['max_response_length'] = st.slider(
+            "📏 Max Response Length (tokens)",
+            min_value=100,
+            max_value=4000,
+            value=st.session_state.llm_config['max_response_length'],
+            step=100,
+            help="Maximum number of tokens for the LLM response"
+        )
+        
+        # Safety checks
+        st.session_state.llm_config['safety_checks'] = st.checkbox(
+            "🛡️ Enable Safety Checks",
+            value=st.session_state.llm_config['safety_checks'],
+            help="Enable additional safety and appropriateness checks"
+        )
+    
+    with col2:
+        st.subheader("🔍 Retrieval Settings")
+        
+        # Require sources
+        st.session_state.llm_config['require_sources'] = st.checkbox(
+            "📚 Require Sources",
+            value=st.session_state.llm_config['require_sources'],
+            help="Require that responses be based on uploaded documents"
+        )
+        
+        # Minimum relevance score
+        st.session_state.llm_config['min_relevance_score'] = st.slider(
+            "📊 Min Relevance Score",
+            min_value=0.0,
+            max_value=1.0,
+            value=st.session_state.llm_config['min_relevance_score'],
+            step=0.05,
+            help="Minimum similarity score for retrieved documents"
+        )
+        
+        # Quick prompt templates
+        st.subheader("📋 Quick Templates")
+        
+        if st.button("🎯 GDPR Expert"):
+            st.session_state.llm_config['custom_prompt'] = "You are a GDPR expert. Provide accurate, detailed information about data protection regulations, compliance requirements, and best practices. Always cite relevant articles and regulations."
+            st.rerun()
+        
+        if st.button("👨‍💼 Business Advisor"):
+            st.session_state.llm_config['custom_prompt'] = "You are a business advisor specializing in compliance. Focus on practical implementation, cost considerations, and business impact of regulatory requirements."
+            st.rerun()
+        
+        if st.button("⚖️ Legal Counsel"):
+            st.session_state.llm_config['custom_prompt'] = "You are a legal counsel. Provide precise legal analysis, cite relevant laws and regulations, and explain legal implications and requirements."
+            st.rerun()
+        
+        if st.button("🔧 Technical Expert"):
+            st.session_state.llm_config['custom_prompt'] = "You are a technical expert. Focus on implementation details, technical solutions, and practical technical guidance for compliance requirements."
+            st.rerun()
+    
+    # Configuration management
+    st.divider()
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("💾 Save LLM Config", type="primary"):
+            st.success("LLM configuration saved!")
+    
+    with col2:
+        if st.button("🔄 Reset LLM Config"):
+            st.session_state.llm_config = {
+                'use_llm_as_source': False,
+                'custom_prompt': '',
+                'domain_restriction': 'GDPR',
+                'max_response_length': 1000,
+                'require_sources': True,
+                'min_relevance_score': 0.3,
+                'safety_checks': True,
+                'response_tone': 'Professional'
+            }
+            st.success("Reset to default LLM settings!")
+            st.rerun()
+    
+    with col3:
+        if st.button("📤 Export LLM Config"):
+            config_json = st.session_state.llm_config
+            st.download_button(
+                label="Download LLM Configuration",
+                data=str(config_json),
+                file_name="llm_config.json",
+                mime="application/json"
+            )
+
+
+def system_status_section(rag_system):
+    """System status section"""
+    st.header("📊 System Status")
+    st.markdown("Monitor system health, document status, and performance metrics.")
+    
+    # Display system status
+    display_system_status(rag_system)
+    
+    # Document overview
+    st.subheader("📚 Document Overview")
+    try:
+        collection_info = rag_system.vector_store.get_collection_info()
+        if collection_info['count'] > 0:
+            st.success(f"✅ {collection_info['count']} documents ingested in the system")
+            
+            # Show document statistics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Documents", collection_info['count'])
+            with col2:
+                st.metric("Vector Store", collection_info['type'].title())
+            with col3:
+                st.metric("Collection", collection_info['collection_name'])
+        else:
+            st.warning("⚠️ No documents have been uploaded yet. Please upload PDF documents to start querying.")
+    except Exception as e:
+        st.error(f"❌ Error retrieving document information: {str(e)}")
+    
+    # Query history
+    st.subheader("📜 Recent Queries")
+    if st.session_state.query_history:
+        for i, query in enumerate(st.session_state.query_history[-5:], 1):  # Show last 5 queries
+            with st.expander(f"Query {i}: {query['question'][:50]}..."):
+                st.write(f"**Question:** {query['question']}")
+                st.write(f"**Timestamp:** {query['timestamp']}")
+                if query.get('persona'):
+                    st.write(f"**Persona:** {query['persona']}")
+                if query.get('sources_count'):
+                    st.write(f"**Sources Found:** {query['sources_count']}")
+    else:
+        st.info("No queries have been made yet.")
 
 
 def query_history_section():
@@ -624,11 +802,30 @@ def main():
     
     rag_system = st.session_state.rag_system
     
-    # Display system status
-    display_system_status(rag_system)
+    # Document overview at startup
+    st.subheader("📚 Document Overview")
+    try:
+        collection_info = rag_system.vector_store.get_collection_info()
+        if collection_info['count'] > 0:
+            st.success(f"✅ **{collection_info['count']} documents** are currently ingested in the system")
+            
+            # Show document statistics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("📄 Total Documents", collection_info['count'])
+            with col2:
+                st.metric("🗄️ Vector Store", collection_info['type'].title())
+            with col3:
+                st.metric("📁 Collection", collection_info['collection_name'])
+        else:
+            st.warning("⚠️ **No documents uploaded yet.** Please upload PDF documents in the 'Upload Documents' tab to start querying.")
+    except Exception as e:
+        st.error(f"❌ Error retrieving document information: {str(e)}")
+    
+    st.divider()
     
     # Main tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📄 Upload Documents", "🔍 Query Documents", "🛡️ Guardrails", "📜 History"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📄 Upload Documents", "🔍 Query Documents", "👤 Persona Guardrails", "⚙️ LLM Configuration", "📊 System Status"])
     
     with tab1:
         upload_documents_section(rag_system)
@@ -637,10 +834,13 @@ def main():
         query_section(rag_system)
     
     with tab3:
-        guardrails_section(rag_system)
+        persona_guardrails_section(rag_system)
     
     with tab4:
-        query_history_section()
+        llm_configuration_section(rag_system)
+    
+    with tab5:
+        system_status_section(rag_system)
 
 
 if __name__ == "__main__":
