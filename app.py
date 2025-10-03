@@ -150,7 +150,7 @@ def query_section(rag_system: RAGSystem):
 
 
 def display_query_results(result: Dict[str, Any]):
-    """Display query results"""
+    """Display query results with enhanced source text display"""
     if not result["success"]:
         st.error(f"❌ Error: {result['answer']}")
         return
@@ -161,28 +161,94 @@ def display_query_results(result: Dict[str, Any]):
     
     # Sources and scores
     if result["sources"]:
-        st.subheader("📚 Sources")
+        st.subheader("📚 Retrieved Text Chunks")
+        st.markdown("*These are the actual text chunks from your documents that were used to generate the answer above.*")
+        
+        # Summary of retrieved chunks
+        total_chunks = len(result["sources"])
+        total_chars = sum(source.get("content_length", len(source["content"])) for source in result["sources"])
+        avg_score = sum(result["scores"]) / len(result["scores"]) if result["scores"] else 0
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("📄 Chunks Retrieved", total_chunks)
+        with col2:
+            st.metric("📝 Total Characters", f"{total_chars:,}")
+        with col3:
+            st.metric("📊 Avg Relevance", f"{avg_score:.3f}")
+        with col4:
+            st.metric("📏 Avg Chunk Size", f"{total_chars//total_chunks if total_chunks > 0 else 0:,}")
+        
+        st.divider()
         
         for i, source in enumerate(result["sources"], 1):
-            with st.expander(f"Source {i} (Score: {source['score']:.3f})"):
-                st.write("**Content:**")
-                st.write(source["content"])
+            # Create a more prominent display for each source
+            col1, col2 = st.columns([1, 4])
+            
+            with col1:
+                # Score badge
+                score_color = "green" if source['score'] > 0.8 else "orange" if source['score'] > 0.6 else "red"
+                st.markdown(f"""
+                <div style="text-align: center; padding: 10px; border: 1px solid {score_color}; border-radius: 5px; margin: 5px 0;">
+                    <strong>Source {i}</strong><br>
+                    <span style="color: {score_color}; font-size: 18px; font-weight: bold;">
+                        {source['score']:.3f}
+                    </span><br>
+                    <small>Relevance</small>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                # Text content in a highlighted box
+                st.markdown(f"""
+                <div style="background-color: #f0f2f6; padding: 15px; border-radius: 5px; border-left: 4px solid #1f77b4; margin: 5px 0;">
+                    <strong>📄 Text Chunk:</strong><br>
+                    <div style="margin-top: 10px; line-height: 1.6;">
+                        {source["content"]}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
                 
-                st.write("**Metadata:**")
-                metadata_df = pd.DataFrame([source["metadata"]])
-                st.dataframe(metadata_df, use_container_width=True)
+                # Metadata in a collapsible section
+                with st.expander(f"📋 Metadata for Source {i}", expanded=False):
+                    metadata = source["metadata"]
+                    if metadata:
+                        # Display metadata in a nice format
+                        for key, value in metadata.items():
+                            st.write(f"**{key.replace('_', ' ').title()}:** {value}")
+                    else:
+                        st.write("No metadata available")
+                    
+                    # Add chunk statistics
+                    st.write("**Chunk Statistics:**")
+                    st.write(f"**Content Length:** {source.get('content_length', len(source['content'])):,} characters")
+                    st.write(f"**Relevance Score:** {source['score']:.3f}")
+                    
+                    # Show content preview in metadata
+                    if source.get('content_preview'):
+                        st.write("**Content Preview:**")
+                        st.code(source['content_preview'], language=None)
         
         # Score visualization
         if len(result["scores"]) > 1:
-            st.subheader("📊 Relevance Scores")
+            st.subheader("📊 Relevance Score Distribution")
             scores_df = pd.DataFrame({
                 "Source": [f"Source {i+1}" for i in range(len(result["scores"]))],
                 "Score": result["scores"]
             })
             st.bar_chart(scores_df.set_index("Source"))
+            
+            # Add score interpretation
+            avg_score = sum(result["scores"]) / len(result["scores"])
+            if avg_score > 0.8:
+                st.success(f"🎯 Excellent relevance! Average score: {avg_score:.3f}")
+            elif avg_score > 0.6:
+                st.info(f"✅ Good relevance. Average score: {avg_score:.3f}")
+            else:
+                st.warning(f"⚠️ Low relevance. Average score: {avg_score:.3f}")
     
     # Query metadata
-    with st.expander("Query Information", expanded=False):
+    with st.expander("🔍 Query Information", expanded=False):
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Model Used", result.get("model_used", "Unknown"))

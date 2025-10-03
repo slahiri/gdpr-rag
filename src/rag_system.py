@@ -109,14 +109,16 @@ class RAGSystem:
                 context_documents=search_results
             )
             
-            # Extract sources and scores
+            # Extract sources and scores with full text content
             sources = []
             scores = []
             for result in search_results:
                 sources.append({
-                    "content": result["content"][:200] + "..." if len(result["content"]) > 200 else result["content"],
+                    "content": result["content"],  # Show full text chunk
                     "metadata": result["metadata"],
-                    "score": result["score"]
+                    "score": result["score"],
+                    "content_length": len(result["content"]),  # Add content length for reference
+                    "content_preview": result["content"][:150] + "..." if len(result["content"]) > 150 else result["content"]  # Preview for summaries
                 })
                 scores.append(result["score"])
             
