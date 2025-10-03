@@ -105,11 +105,19 @@ class RAGSystem:
                     }
             
             # Retrieve relevant documents
-            search_results = self.vector_store.similarity_search(question, k=top_k)
+            search_results = self.vector_store.similarity_search(question, k=top_k * 2)  # Get more results for persona filtering
             
             # Apply minimum relevance score filter
             min_score = guardrails.get('min_relevance_score', 0.0)
             filtered_results = [r for r in search_results if r['score'] >= min_score]
+            
+            # Apply persona-aware chunk selection and re-ranking
+            persona = guardrails.get('persona', 'None')
+            if persona != 'None':
+                filtered_results = self._filter_chunks_by_persona(filtered_results, persona, question)
+            
+            # Limit to top_k results after persona filtering
+            filtered_results = filtered_results[:top_k]
             
             # Check if sources are required
             if guardrails.get('require_sources', True) and not filtered_results:
@@ -293,3 +301,156 @@ class RAGSystem:
         
         # Check if any domain keywords are present in the question
         return any(keyword in question_lower for keyword in keywords)
+    
+    def _filter_chunks_by_persona(self, chunks: List[Dict[str, Any]], persona: str, question: str) -> List[Dict[str, Any]]:
+        """
+        Filter and re-rank chunks based on persona relevance using Hybrid Retrieval Pattern
+        
+        Args:
+            chunks: List of retrieved chunks
+            persona: Target persona
+            question: User question
+            
+        Returns:
+            Filtered and re-ranked chunks
+        """
+        persona_keywords = self._get_persona_keywords(persona)
+        question_lower = question.lower()
+        
+        # Score each chunk based on persona relevance
+        scored_chunks = []
+        for chunk in chunks:
+            content_lower = chunk['content'].lower()
+            metadata_lower = str(chunk.get('metadata', {})).lower()
+            
+            # Calculate persona relevance score
+            persona_score = 0
+            
+            # Check for persona-specific keywords in content
+            for keyword in persona_keywords:
+                if keyword in content_lower:
+                    persona_score += 2  # Higher weight for content matches
+                if keyword in metadata_lower:
+                    persona_score += 1  # Lower weight for metadata matches
+            
+            # Check for question-related keywords in content
+            question_words = question_lower.split()
+            for word in question_words:
+                if len(word) > 3 and word in content_lower:  # Only consider meaningful words
+                    persona_score += 0.5
+            
+            # Combine original similarity score with persona score
+            combined_score = chunk['score'] + (persona_score * 0.1)  # Weight persona score appropriately
+            
+            scored_chunks.append({
+                **chunk,
+                'persona_score': persona_score,
+                'combined_score': combined_score
+            })
+        
+        # Sort by combined score (original similarity + persona relevance)
+        scored_chunks.sort(key=lambda x: x['combined_score'], reverse=True)
+        
+        # Update the original score with combined score for display
+        for chunk in scored_chunks:
+            chunk['score'] = chunk['combined_score']
+            chunk['metadata']['persona_score'] = chunk['persona_score']
+        
+        return scored_chunks
+    
+    def _get_persona_keywords(self, persona: str) -> List[str]:
+        """
+        Get persona-specific keywords for filtering
+        
+        Args:
+            persona: Target persona
+            
+        Returns:
+            List of relevant keywords
+        """
+        persona_keywords = {
+            'CISO': [
+                'security', 'cybersecurity', 'risk', 'threat', 'vulnerability', 'incident', 'breach',
+                'access control', 'authentication', 'authorization', 'encryption', 'firewall',
+                'security policy', 'security framework', 'compliance', 'audit', 'governance',
+                'security awareness', 'training', 'monitoring', 'detection', 'response'
+            ],
+            'DPO': [
+                'data protection', 'privacy', 'gdpr', 'consent', 'lawful basis', 'data subject',
+                'data controller', 'data processor', 'dpo', 'data protection officer',
+                'breach notification', 'right to be forgotten', 'data portability',
+                'privacy by design', 'data minimization', 'purpose limitation',
+                'storage limitation', 'accuracy', 'integrity', 'confidentiality'
+            ],
+            'Accountant': [
+                'financial', 'cost', 'budget', 'expense', 'revenue', 'profit', 'loss',
+                'accounting', 'bookkeeping', 'audit', 'financial reporting', 'tax',
+                'compliance', 'regulatory', 'financial risk', 'investment', 'roi',
+                'cost-benefit', 'financial impact', 'budget allocation', 'financial planning'
+            ],
+            'Layman': [
+                'simple', 'easy', 'understand', 'explain', 'basic', 'fundamental',
+                'practical', 'everyday', 'common', 'general', 'public', 'citizen',
+                'rights', 'protection', 'privacy', 'personal', 'individual'
+            ],
+            'Student': [
+                'learn', 'study', 'education', 'academic', 'research', 'theory',
+                'concept', 'principle', 'example', 'case study', 'analysis',
+                'understanding', 'knowledge', 'learning', 'curriculum', 'course'
+            ],
+            'CEO': [
+                'business', 'strategy', 'leadership', 'management', 'executive',
+                'corporate', 'organization', 'company', 'enterprise', 'stakeholder',
+                'competitive advantage', 'market', 'growth', 'innovation', 'vision',
+                'mission', 'goals', 'objectives', 'performance', 'success'
+            ],
+            'Financial Product Consumer': [
+                'consumer', 'customer', 'client', 'user', 'individual', 'personal',
+                'financial product', 'service', 'account', 'transaction', 'payment',
+                'credit', 'loan', 'insurance', 'investment', 'savings', 'banking'
+            ],
+            'Legal Counsel': [
+                'legal', 'law', 'regulation', 'statute', 'legislation', 'court',
+                'litigation', 'liability', 'contract', 'agreement', 'compliance',
+                'legal obligation', 'legal requirement', 'legal framework', 'jurisdiction',
+                'precedent', 'case law', 'legal opinion', 'legal advice'
+            ],
+            'IT Manager': [
+                'technical', 'technology', 'system', 'infrastructure', 'network',
+                'software', 'hardware', 'database', 'server', 'cloud', 'api',
+                'integration', 'implementation', 'deployment', 'maintenance',
+                'support', 'troubleshooting', 'performance', 'scalability'
+            ],
+            'HR Manager': [
+                'employee', 'staff', 'workforce', 'human resources', 'personnel',
+                'recruitment', 'hiring', 'training', 'development', 'performance',
+                'workplace', 'employment', 'labor', 'workplace policy', 'employee rights',
+                'workplace culture', 'team', 'management', 'supervision'
+            ],
+            'Marketing Manager': [
+                'marketing', 'advertising', 'promotion', 'campaign', 'brand',
+                'customer', 'client', 'audience', 'target', 'market', 'sales',
+                'revenue', 'growth', 'engagement', 'conversion', 'analytics',
+                'digital marketing', 'social media', 'content', 'strategy'
+            ],
+            'Small Business Owner': [
+                'small business', 'entrepreneur', 'startup', 'owner', 'founder',
+                'business growth', 'scalability', 'resources', 'budget', 'cost',
+                'practical', 'implementation', 'operations', 'management',
+                'customer service', 'local business', 'community', 'flexibility'
+            ],
+            'Developer': [
+                'code', 'programming', 'development', 'software', 'application',
+                'api', 'database', 'backend', 'frontend', 'integration',
+                'implementation', 'technical', 'architecture', 'framework',
+                'library', 'tool', 'debugging', 'testing', 'deployment'
+            ],
+            'Auditor': [
+                'audit', 'compliance', 'verification', 'evidence', 'documentation',
+                'review', 'assessment', 'evaluation', 'control', 'procedure',
+                'standard', 'requirement', 'regulatory', 'governance', 'risk',
+                'internal audit', 'external audit', 'audit trail', 'findings'
+            ]
+        }
+        
+        return persona_keywords.get(persona, [])

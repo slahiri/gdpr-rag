@@ -172,20 +172,36 @@ def display_query_results(result: Dict[str, Any]):
         st.subheader("📚 Retrieved Text Chunks")
         st.markdown("*These are the actual text chunks from your documents that were used to generate the answer above.*")
         
-        # Summary of retrieved chunks
-        total_chunks = len(result["sources"])
-        total_chars = sum(source.get("content_length", len(source["content"])) for source in result["sources"])
-        avg_score = sum(result["scores"]) / len(result["scores"]) if result["scores"] else 0
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("📄 Chunks Retrieved", total_chunks)
-        with col2:
-            st.metric("📝 Total Characters", f"{total_chars:,}")
-        with col3:
-            st.metric("📊 Avg Relevance", f"{avg_score:.3f}")
-        with col4:
-            st.metric("📏 Avg Chunk Size", f"{total_chars//total_chunks if total_chunks > 0 else 0:,}")
+                # Summary of retrieved chunks
+                total_chunks = len(result["sources"])
+                total_chars = sum(source.get("content_length", len(source["content"])) for source in result["sources"])
+                avg_score = sum(result["scores"]) / len(result["scores"]) if result["scores"] else 0
+                
+                # Check if persona filtering was applied
+                persona_applied = any(source.get("metadata", {}).get("persona_score") is not None for source in result["sources"])
+                
+                if persona_applied:
+                    col1, col2, col3, col4, col5 = st.columns(5)
+                    with col1:
+                        st.metric("📄 Chunks Retrieved", total_chunks)
+                    with col2:
+                        st.metric("📝 Total Characters", f"{total_chars:,}")
+                    with col3:
+                        st.metric("📊 Avg Relevance", f"{avg_score:.3f}")
+                    with col4:
+                        st.metric("📏 Avg Chunk Size", f"{total_chars//total_chunks if total_chunks > 0 else 0:,}")
+                    with col5:
+                        st.metric("🎯 Persona Filtered", "✅ Yes")
+                else:
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("📄 Chunks Retrieved", total_chunks)
+                    with col2:
+                        st.metric("📝 Total Characters", f"{total_chars:,}")
+                    with col3:
+                        st.metric("📊 Avg Relevance", f"{avg_score:.3f}")
+                    with col4:
+                        st.metric("📏 Avg Chunk Size", f"{total_chars//total_chunks if total_chunks > 0 else 0:,}")
         
         st.divider()
         
@@ -227,15 +243,21 @@ def display_query_results(result: Dict[str, Any]):
                     else:
                         st.write("No metadata available")
                     
-                    # Add chunk statistics
-                    st.write("**Chunk Statistics:**")
-                    st.write(f"**Content Length:** {source.get('content_length', len(source['content'])):,} characters")
-                    st.write(f"**Relevance Score:** {source['score']:.3f}")
-                    
-                    # Show content preview in metadata
-                    if source.get('content_preview'):
-                        st.write("**Content Preview:**")
-                        st.code(source['content_preview'], language=None)
+                        # Add chunk statistics
+                        st.write("**Chunk Statistics:**")
+                        st.write(f"**Content Length:** {source.get('content_length', len(source['content'])):,} characters")
+                        st.write(f"**Relevance Score:** {source['score']:.3f}")
+                        
+                        # Show persona score if available
+                        persona_score = source.get('metadata', {}).get('persona_score')
+                        if persona_score is not None:
+                            st.write(f"**Persona Score:** {persona_score:.1f}")
+                            st.write(f"**Combined Score:** {source['score']:.3f} (semantic + persona)")
+                        
+                        # Show content preview in metadata
+                        if source.get('content_preview'):
+                            st.write("**Content Preview:**")
+                            st.code(source['content_preview'], language=None)
         
         # Score visualization
         if len(result["scores"]) > 1:
