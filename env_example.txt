@@ -1,0 +1,14 @@
+# AWS Configuration
+AWS_ACCESS_KEY_ID=your_aws_access_key_here
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key_here
+AWS_REGION=eu-central-1
+AWS_DEFAULT_REGION=eu-central-1
+
+# Vector Database Configuration (choose one)
+# For Qdrant (recommended) - Cloud instance
+QDRANT_URL=your_qdrant_url_here
+QDRANT_API_KEY=your_qdrant_api_key_here
+
+# Bedrock Model Configuration
+BEDROCK_MODEL_ID=your_bedrock_model_id_here
+MODEL_NAME=your_model_name_here
