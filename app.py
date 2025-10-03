@@ -282,7 +282,9 @@ def guardrails_section(rag_system):
             'require_sources': True,
             'min_relevance_score': 0.3,
             'safety_checks': True,
-            'response_tone': 'Professional'
+            'response_tone': 'Professional',
+            'persona': 'None',
+            'strict_persona': False
         }
     
     # Create two columns for better layout
@@ -317,6 +319,45 @@ def guardrails_section(rag_system):
             ),
             help="Set the tone for AI responses"
         )
+        
+        # Persona selection
+        st.subheader("👤 User Persona")
+        st.session_state.guardrails['persona'] = st.selectbox(
+            "🎯 Target Persona",
+            options=['None', 'CISO', 'DPO', 'Accountant', 'Layman', 'Student', 'CEO', 'Financial Product Consumer', 'Legal Counsel', 'IT Manager', 'HR Manager', 'Marketing Manager', 'Small Business Owner', 'Developer', 'Auditor'],
+            index=['None', 'CISO', 'DPO', 'Accountant', 'Layman', 'Student', 'CEO', 'Financial Product Consumer', 'Legal Counsel', 'IT Manager', 'HR Manager', 'Marketing Manager', 'Small Business Owner', 'Developer', 'Auditor'].index(
+                st.session_state.guardrails['persona']
+            ),
+            help="Select the persona/role to tailor responses for"
+        )
+        
+        # Strict persona adherence
+        st.session_state.guardrails['strict_persona'] = st.checkbox(
+            "🔒 Strictly Adhere to Persona",
+            value=st.session_state.guardrails['strict_persona'],
+            help="Enforce persona-specific language, examples, and context. If disabled, persona is used as guidance only."
+        )
+        
+        # Show persona description
+        if st.session_state.guardrails['persona'] != 'None':
+            persona_descriptions = {
+                'CISO': 'Chief Information Security Officer - Focus on security risks, technical controls, and strategic security planning',
+                'DPO': 'Data Protection Officer - Emphasize compliance requirements, legal obligations, and regulatory frameworks',
+                'Accountant': 'Financial professional - Focus on financial implications, cost-benefit analysis, and accounting standards',
+                'Layman': 'General public - Use simple language, avoid jargon, focus on practical implications',
+                'Student': 'Academic learner - Provide educational context, explain concepts clearly, include learning objectives',
+                'CEO': 'Chief Executive Officer - Focus on business impact, strategic decisions, and organizational implications',
+                'Financial Product Consumer': 'Individual consumer - Focus on personal rights, practical steps, and consumer protection',
+                'Legal Counsel': 'Lawyer - Emphasize legal precedents, case law, and detailed legal analysis',
+                'IT Manager': 'Technology manager - Focus on technical implementation, system requirements, and operational aspects',
+                'HR Manager': 'Human Resources - Focus on employee data, workplace policies, and HR compliance',
+                'Marketing Manager': 'Marketing professional - Focus on customer data, marketing compliance, and business opportunities',
+                'Small Business Owner': 'Entrepreneur - Focus on practical implementation, cost considerations, and business growth',
+                'Developer': 'Software developer - Focus on technical implementation, code examples, and development practices',
+                'Auditor': 'Compliance auditor - Focus on audit trails, evidence requirements, and compliance verification'
+            }
+            
+            st.info(f"**{st.session_state.guardrails['persona']}**: {persona_descriptions.get(st.session_state.guardrails['persona'], 'Custom persona')}")
         
         # Custom prompt
         st.subheader("📝 Custom System Prompt")
@@ -372,7 +413,15 @@ def guardrails_section(rag_system):
             
             "Compliance Officer": "You are a data protection compliance officer. Help with GDPR implementation, compliance procedures, and best practices. Focus on practical, actionable guidance for organizations handling personal data.",
             
-            "Privacy Consultant": "You are a privacy consultant. Provide guidance on GDPR compliance, data protection impact assessments, and privacy by design principles. Emphasize practical implementation strategies."
+            "Privacy Consultant": "You are a privacy consultant. Provide guidance on GDPR compliance, data protection impact assessments, and privacy by design principles. Emphasize practical implementation strategies.",
+            
+            "CISO Focus": "You are a GDPR expert responding to a Chief Information Security Officer. Focus on security risks, technical controls, threat mitigation, and strategic security planning related to data protection.",
+            
+            "DPO Focus": "You are a GDPR expert responding to a Data Protection Officer. Emphasize compliance requirements, legal obligations, regulatory frameworks, and audit requirements.",
+            
+            "Business Executive": "You are a GDPR expert responding to a business executive. Focus on business impact, strategic decisions, organizational implications, and competitive advantage of data protection compliance.",
+            
+            "Consumer Rights": "You are a GDPR expert responding to a consumer. Focus on personal rights, practical steps, consumer protection, and individual privacy rights in simple, clear language."
         }
         
         selected_template = st.selectbox(
@@ -393,6 +442,8 @@ def guardrails_section(rag_system):
             "LLM as Source": st.session_state.guardrails['use_llm_as_source'],
             "Domain": st.session_state.guardrails['domain_restriction'],
             "Tone": st.session_state.guardrails['response_tone'],
+            "Persona": st.session_state.guardrails['persona'],
+            "Strict Persona": st.session_state.guardrails['strict_persona'],
             "Max Length": st.session_state.guardrails['max_response_length'],
             "Require Sources": st.session_state.guardrails['require_sources'],
             "Min Relevance": st.session_state.guardrails['min_relevance_score'],
@@ -433,7 +484,9 @@ def guardrails_section(rag_system):
                 'require_sources': True,
                 'min_relevance_score': 0.3,
                 'safety_checks': True,
-                'response_tone': 'Professional'
+                'response_tone': 'Professional',
+                'persona': 'None',
+                'strict_persona': False
             }
             st.success("Reset to default settings!")
             st.rerun()

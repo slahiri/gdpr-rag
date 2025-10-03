@@ -269,6 +269,12 @@ Response:"""
         }
         base_prompt += f" {tone_instructions.get(tone, '')}"
         
+        # Add persona-specific instructions
+        persona = guardrails.get('persona', 'None')
+        if persona != 'None':
+            persona_instructions = self._get_persona_instructions(persona, guardrails.get('strict_persona', False))
+            base_prompt += f" {persona_instructions}"
+        
         # Add LLM knowledge source instruction
         if not guardrails.get('use_llm_as_source', False):
             base_prompt += " Only use information from the provided context documents. Do not use your training data."
@@ -297,4 +303,72 @@ Instructions:
 Response:"""
         
         return prompt
+    
+    def _get_persona_instructions(self, persona: str, strict_mode: bool) -> str:
+        """Get persona-specific instructions"""
+        
+        persona_instructions = {
+            'CISO': {
+                'strict': "You are responding to a Chief Information Security Officer. Focus exclusively on security risks, technical controls, threat mitigation, compliance frameworks, and strategic security planning. Use security terminology and emphasize risk assessment, incident response, and security governance.",
+                'flexible': "Tailor your response for a Chief Information Security Officer. Emphasize security implications, technical controls, and strategic security considerations while maintaining accessibility."
+            },
+            'DPO': {
+                'strict': "You are responding to a Data Protection Officer. Focus exclusively on compliance requirements, legal obligations, regulatory frameworks, data subject rights, and audit requirements. Use legal and compliance terminology.",
+                'flexible': "Tailor your response for a Data Protection Officer. Emphasize compliance requirements, legal obligations, and regulatory frameworks while providing practical guidance."
+            },
+            'Accountant': {
+                'strict': "You are responding to a financial professional/accountant. Focus exclusively on financial implications, cost-benefit analysis, accounting standards, financial reporting requirements, and budget considerations. Use financial terminology and emphasize monetary impacts.",
+                'flexible': "Tailor your response for a financial professional. Emphasize financial implications, cost considerations, and accounting standards while maintaining clarity."
+            },
+            'Layman': {
+                'strict': "You are responding to a member of the general public. Use simple, jargon-free language. Avoid technical terms and legal complexity. Focus on practical implications, everyday examples, and actionable steps. Explain concepts in plain English.",
+                'flexible': "Tailor your response for the general public. Use clear, simple language and focus on practical implications while avoiding unnecessary technical jargon."
+            },
+            'Student': {
+                'strict': "You are responding to a student. Provide educational context, explain concepts clearly with learning objectives, include relevant examples, and structure information for learning. Use educational terminology and encourage further study.",
+                'flexible': "Tailor your response for a student. Provide clear explanations, educational context, and learning-focused examples while maintaining academic rigor."
+            },
+            'CEO': {
+                'strict': "You are responding to a Chief Executive Officer. Focus exclusively on business impact, strategic decisions, organizational implications, competitive advantage, and executive-level considerations. Use business terminology and emphasize ROI and strategic value.",
+                'flexible': "Tailor your response for a Chief Executive Officer. Emphasize business impact, strategic implications, and organizational considerations while providing actionable insights."
+            },
+            'Financial Product Consumer': {
+                'strict': "You are responding to an individual consumer of financial products. Focus exclusively on personal rights, practical steps for consumers, consumer protection, individual privacy rights, and personal data control. Use consumer-friendly language.",
+                'flexible': "Tailor your response for a financial product consumer. Focus on personal rights, practical consumer steps, and individual privacy considerations."
+            },
+            'Legal Counsel': {
+                'strict': "You are responding to a lawyer/legal counsel. Emphasize legal precedents, case law, detailed legal analysis, regulatory interpretations, and legal risk assessment. Use precise legal terminology and cite relevant legal frameworks.",
+                'flexible': "Tailor your response for legal counsel. Emphasize legal analysis, regulatory frameworks, and legal implications while providing practical legal guidance."
+            },
+            'IT Manager': {
+                'strict': "You are responding to an IT Manager. Focus exclusively on technical implementation, system requirements, operational aspects, technology solutions, and IT infrastructure considerations. Use technical terminology and emphasize practical implementation.",
+                'flexible': "Tailor your response for an IT Manager. Emphasize technical implementation, system requirements, and operational considerations while maintaining technical accuracy."
+            },
+            'HR Manager': {
+                'strict': "You are responding to an HR Manager. Focus exclusively on employee data, workplace policies, HR compliance, employee rights, and organizational policies. Use HR terminology and emphasize workplace implications.",
+                'flexible': "Tailor your response for an HR Manager. Emphasize employee data considerations, workplace policies, and HR compliance requirements."
+            },
+            'Marketing Manager': {
+                'strict': "You are responding to a Marketing Manager. Focus exclusively on customer data, marketing compliance, business opportunities, customer engagement, and marketing strategy implications. Use marketing terminology and emphasize business growth.",
+                'flexible': "Tailor your response for a Marketing Manager. Emphasize customer data considerations, marketing compliance, and business opportunities."
+            },
+            'Small Business Owner': {
+                'strict': "You are responding to a small business owner/entrepreneur. Focus exclusively on practical implementation, cost considerations, business growth, resource constraints, and entrepreneurial challenges. Use business-friendly language and emphasize practical solutions.",
+                'flexible': "Tailor your response for a small business owner. Emphasize practical implementation, cost considerations, and business growth opportunities."
+            },
+            'Developer': {
+                'strict': "You are responding to a software developer. Focus exclusively on technical implementation, code examples, development practices, technical architecture, and programming considerations. Use technical terminology and provide code-relevant examples.",
+                'flexible': "Tailor your response for a software developer. Emphasize technical implementation, development practices, and programming considerations."
+            },
+            'Auditor': {
+                'strict': "You are responding to a compliance auditor. Focus exclusively on audit trails, evidence requirements, compliance verification, documentation standards, and audit procedures. Use audit terminology and emphasize verification processes.",
+                'flexible': "Tailor your response for a compliance auditor. Emphasize audit requirements, evidence standards, and compliance verification processes."
+            }
+        }
+        
+        persona_config = persona_instructions.get(persona, {})
+        if strict_mode:
+            return persona_config.get('strict', f"Tailor your response for a {persona}.")
+        else:
+            return persona_config.get('flexible', f"Consider the perspective of a {persona} in your response.")
 
