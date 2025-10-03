@@ -113,8 +113,25 @@ class RAGSystem:
             
             # Apply persona-aware chunk selection and re-ranking
             persona = guardrails.get('persona', 'None')
+            persona_threshold = guardrails.get('persona_threshold', 0.2)
+            
             if persona != 'None':
-                filtered_results = self._filter_chunks_by_persona(filtered_results, persona, question)
+                # Apply persona filtering and check if threshold is met
+                persona_filtered_results, max_persona_score = self._filter_chunks_by_persona(filtered_results, persona, question)
+                
+                # Check if persona relevance meets threshold
+                if max_persona_score >= persona_threshold:
+                    filtered_results = persona_filtered_results
+                    # Add metadata to indicate persona filtering was applied
+                    for result in filtered_results:
+                        result['metadata']['persona_filtering_applied'] = True
+                        result['metadata']['persona_threshold_met'] = True
+                else:
+                    # Fall back to generic retrieval if persona relevance is too low
+                    for result in filtered_results:
+                        result['metadata']['persona_filtering_applied'] = False
+                        result['metadata']['persona_threshold_met'] = False
+                        result['metadata']['max_persona_score'] = max_persona_score
             
             # Limit to top_k results after persona filtering
             filtered_results = filtered_results[:top_k]
@@ -302,7 +319,7 @@ class RAGSystem:
         # Check if any domain keywords are present in the question
         return any(keyword in question_lower for keyword in keywords)
     
-    def _filter_chunks_by_persona(self, chunks: List[Dict[str, Any]], persona: str, question: str) -> List[Dict[str, Any]]:
+    def _filter_chunks_by_persona(self, chunks: List[Dict[str, Any]], persona: str, question: str) -> tuple[List[Dict[str, Any]], float]:
         """
         Filter and re-rank chunks based on persona relevance using Hybrid Retrieval Pattern
         
@@ -312,13 +329,15 @@ class RAGSystem:
             question: User question
             
         Returns:
-            Filtered and re-ranked chunks
+            Tuple of (filtered and re-ranked chunks, maximum persona score)
         """
         persona_keywords = self._get_persona_keywords(persona)
         question_lower = question.lower()
         
         # Score each chunk based on persona relevance
         scored_chunks = []
+        max_persona_score = 0
+        
         for chunk in chunks:
             content_lower = chunk['content'].lower()
             metadata_lower = str(chunk.get('metadata', {})).lower()
@@ -339,6 +358,9 @@ class RAGSystem:
                 if len(word) > 3 and word in content_lower:  # Only consider meaningful words
                     persona_score += 0.5
             
+            # Track maximum persona score
+            max_persona_score = max(max_persona_score, persona_score)
+            
             # Combine original similarity score with persona score
             combined_score = chunk['score'] + (persona_score * 0.1)  # Weight persona score appropriately
             
@@ -356,7 +378,7 @@ class RAGSystem:
             chunk['score'] = chunk['combined_score']
             chunk['metadata']['persona_score'] = chunk['persona_score']
         
-        return scored_chunks
+        return scored_chunks, max_persona_score
     
     def _get_persona_keywords(self, persona: str) -> List[str]:
         """

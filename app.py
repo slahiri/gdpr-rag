@@ -179,6 +179,7 @@ def display_query_results(result: Dict[str, Any]):
                 
                 # Check if persona filtering was applied
                 persona_applied = any(source.get("metadata", {}).get("persona_score") is not None for source in result["sources"])
+                persona_threshold_met = any(source.get("metadata", {}).get("persona_threshold_met", False) for source in result["sources"])
                 
                 if persona_applied:
                     col1, col2, col3, col4, col5 = st.columns(5)
@@ -191,7 +192,10 @@ def display_query_results(result: Dict[str, Any]):
                     with col4:
                         st.metric("📏 Avg Chunk Size", f"{total_chars//total_chunks if total_chunks > 0 else 0:,}")
                     with col5:
-                        st.metric("🎯 Persona Filtered", "✅ Yes")
+                        if persona_threshold_met:
+                            st.metric("🎯 Persona Filtered", "✅ Yes")
+                        else:
+                            st.metric("🎯 Persona Filtered", "❌ Below Threshold")
                 else:
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
@@ -253,6 +257,14 @@ def display_query_results(result: Dict[str, Any]):
                         if persona_score is not None:
                             st.write(f"**Persona Score:** {persona_score:.1f}")
                             st.write(f"**Combined Score:** {source['score']:.3f} (semantic + persona)")
+                            
+                            # Show threshold status
+                            threshold_met = source.get('metadata', {}).get('persona_threshold_met', False)
+                            if threshold_met:
+                                st.write("**Threshold Status:** ✅ Met")
+                            else:
+                                max_score = source.get('metadata', {}).get('max_persona_score', 0)
+                                st.write(f"**Threshold Status:** ❌ Below (max: {max_score:.1f})")
                         
                         # Show content preview in metadata
                         if source.get('content_preview'):
@@ -306,7 +318,8 @@ def guardrails_section(rag_system):
             'safety_checks': True,
             'response_tone': 'Professional',
             'persona': 'None',
-            'strict_persona': False
+            'strict_persona': False,
+            'persona_threshold': 0.2
         }
     
     # Create two columns for better layout
@@ -353,12 +366,31 @@ def guardrails_section(rag_system):
             help="Select the persona/role to tailor responses for"
         )
         
-        # Strict persona adherence
-        st.session_state.guardrails['strict_persona'] = st.checkbox(
-            "🔒 Strictly Adhere to Persona",
-            value=st.session_state.guardrails['strict_persona'],
-            help="Enforce persona-specific language, examples, and context. If disabled, persona is used as guidance only."
-        )
+                # Strict persona adherence
+                st.session_state.guardrails['strict_persona'] = st.checkbox(
+                    "🔒 Strictly Adhere to Persona",
+                    value=st.session_state.guardrails['strict_persona'],
+                    help="Enforce persona-specific language, examples, and context. If disabled, persona is used as guidance only."
+                )
+                
+                # Persona threshold
+                st.session_state.guardrails['persona_threshold'] = st.slider(
+                    "🎯 Persona Relevance Threshold",
+                    min_value=0.0,
+                    max_value=2.0,
+                    value=st.session_state.guardrails.get('persona_threshold', 0.2),
+                    step=0.1,
+                    help="Minimum persona relevance score required to apply persona filtering. If below threshold, uses generic retrieval."
+                )
+                
+                # Show threshold explanation
+                if st.session_state.guardrails['persona'] != 'None':
+                    st.info(f"""
+                    **Persona Threshold Logic:**
+                    - **Above {st.session_state.guardrails['persona_threshold']}**: Apply persona-specific filtering and re-ranking
+                    - **Below {st.session_state.guardrails['persona_threshold']}**: Fall back to generic semantic search
+                    - **Score Calculation**: Content matches (+2), metadata matches (+1), question relevance (+0.5)
+                    """)
         
         # Show persona description
         if st.session_state.guardrails['persona'] != 'None':
@@ -508,7 +540,8 @@ def guardrails_section(rag_system):
                 'safety_checks': True,
                 'response_tone': 'Professional',
                 'persona': 'None',
-                'strict_persona': False
+                'strict_persona': False,
+                'persona_threshold': 0.2
             }
             st.success("Reset to default settings!")
             st.rerun()
